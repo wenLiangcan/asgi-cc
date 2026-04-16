@@ -50,6 +50,7 @@ async def main() -> int:
     env = os.environ.copy()
     env.setdefault("CRANKER_ROUTER_URL", "wss://localhost:12001")
     env.setdefault("CRANKER_VERIFY_SSL", "false")
+    app_port = int(env.get("FASTCC_APP_PORT", "18081"))
 
     server = subprocess.Popen(
         [
@@ -60,14 +61,14 @@ async def main() -> int:
             "--host",
             "127.0.0.1",
             "--port",
-            "18080",
+            str(app_port),
         ],
         cwd=ROOT,
         env=env,
     )
 
     try:
-        await wait_for_health("http://127.0.0.1:18080/health", verify=True)
+        await wait_for_health(f"http://127.0.0.1:{app_port}/health", verify=True)
         await wait_for_health("https://localhost:12001/health", verify=False)
         await wait_for_registration("https://localhost:12001/health/connectors")
 
@@ -82,12 +83,12 @@ async def main() -> int:
 
             headers = await client.get(
                 "https://localhost:12000/headers",
-                headers={"x-fast-cc-test": "yes"},
+                headers={"x-fastcc-test": "yes"},
             )
             headers.raise_for_status()
-            assert headers.json()["headers"]["x-fast-cc-test"] == "yes"
+            assert headers.json()["headers"]["x-fastcc-test"] == "yes"
 
-        print("fast-cc end-to-end verification passed")
+        print("fastcc end-to-end verification passed")
         return 0
     finally:
         if server.poll() is None:

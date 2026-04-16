@@ -6,11 +6,11 @@ import logging
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 
-from fast_cc import CrankerConnector, CrankerConnectorConfig
+from fastcc import CrankerConnector, CrankerConnectorConfig
 
 logging.basicConfig(level=logging.INFO)
 
-app = FastAPI(title="fast-cc demo service")
+app = FastAPI(title="fastcc demo service")
 
 connector = CrankerConnector(
     app,
@@ -18,7 +18,7 @@ connector = CrankerConnector(
         router_urls=[os.environ.get("CRANKER_ROUTER_URL", "wss://localhost:12001")],
         route=os.environ.get("CRANKER_ROUTE", "*"),
         domain=os.environ.get("CRANKER_DOMAIN", "*"),
-        component_name="fast-cc-demo",
+        component_name="fastcc-demo",
         verify_ssl=os.environ.get("CRANKER_VERIFY_SSL", "false").lower() == "true",
     ),
 )

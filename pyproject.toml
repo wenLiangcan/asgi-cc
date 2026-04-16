@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "fast-cc"
+name = "fastcc"
 version = "0.0.1"
 description = "Experimental Cranker v3 connector scaffold for ASGI/FastAPI"
 readme = "README.md"
@@ -19,8 +19,8 @@ dependencies = [
 dev = []
 
 [tool.setuptools]
-package-dir = {"" = "."}
+package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
-where = ["."]
-include = ["fast_cc*"]
+where = ["src"]
+include = ["fastcc*"]
