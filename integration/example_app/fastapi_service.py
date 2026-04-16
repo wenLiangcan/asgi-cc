@@ -49,3 +49,8 @@ async def headers(request: Request) -> JSONResponse:
 @app.get("/health")
 async def health() -> PlainTextResponse:
     return PlainTextResponse("ok")
+
+
+@app.get("/benchmark/ping")
+async def benchmark_ping() -> dict[str, str]:
+    return {"ok": "true"}
