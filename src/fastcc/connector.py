@@ -136,7 +136,6 @@ class _StreamState:
 class CrankerSession:
     def __init__(self, connector: "CrankerConnector", websocket: ClientConnection) -> None:
         self.connector = connector
-        self.app = connector.app
         self.config = connector.config
         self.websocket = websocket
         self.streams: dict[int, _StreamState] = {}
@@ -225,7 +224,25 @@ class CrankerSession:
     async def _run_asgi_request(self, state: _StreamState, request_head: Any) -> None:
         try:
             scope = self._build_scope(request_head)
-            await self.app(scope, state.receive, state.send)
+            app = self.connector.app
+            if app is None:
+                await state.send(
+                    {
+                        "type": "http.response.start",
+                        "status": 503,
+                        "headers": [(b"content-type", b"text/plain")],
+                    }
+                )
+                await state.send(
+                    {
+                        "type": "http.response.body",
+                        "body": b"Service Unavailable: No app attached",
+                        "more_body": False,
+                    }
+                )
+                return
+
+            await app(scope, state.receive, state.send)
             if not state.response_started:
                 await state.send(
                     {
@@ -313,15 +330,32 @@ class CrankerSession:
 
 
 class CrankerConnector:
-    def __init__(self, app: ASGIApp, config: CrankerConnectorConfig) -> None:
+    def __init__(
+        self,
+        app: ASGIApp | None = None,
+        config: CrankerConnectorConfig | None = None,
+    ) -> None:
         self.app = app
-        self.config = config
+        self.config = config or CrankerConnectorConfig()
         if self.config.connector_instance_id is None:
             self.config.connector_instance_id = str(uuid.uuid4())
         self._tasks: list[asyncio.Task[None]] = []
         self._shutdown = asyncio.Event()
         self._started = False
 
+        if app is not None:
+            self._register_hooks(app)
+
+    def attach(self, app: ASGIApp) -> None:
+        """Attach an ASGI app to this connector."""
+        self.app = app
+        self._register_hooks(app)
+
+    def detach(self) -> None:
+        """Detach the current ASGI app from this connector."""
+        self.app = None
+
+    def _register_hooks(self, app: ASGIApp) -> None:
         add_event_handler = getattr(app, "add_event_handler", None)
         if callable(add_event_handler):
             add_event_handler("startup", self.startup)
@@ -438,4 +472,6 @@ class CrankerConnector:
         return context
 
     async def __call__(self, scope: dict[str, Any], receive: ASGIReceive, send: ASGISend) -> None:
+        if self.app is None:
+            raise RuntimeError("No app attached to CrankerConnector")
         await self.app(scope, receive, send)

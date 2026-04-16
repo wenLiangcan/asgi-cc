@@ -43,3 +43,20 @@ cd fastcc
 ```
 
 The benchmark also runs a Java app using the official Java connector and compares connector-added latency between the Python and Java implementations.
+
+## Runtime Attach/Detach
+
+`CrankerConnector` supports attaching to and detaching from an ASGI app at runtime without restarting the connector tasks.
+
+```python
+connector = CrankerConnector(config=config)
+await connector.startup()
+
+# Later...
+connector.attach(fastapi_app)
+
+# Or...
+connector.detach()
+```
+
+If no app is attached, the connector will return a `503 Service Unavailable` response to any incoming requests from the router.
