@@ -1,4 +1,4 @@
-# fast-cc
+# fastcc
 
 Python work area for a Cranker connector targeting ASGI/FastAPI services.
 
@@ -8,7 +8,8 @@ This directory currently contains:
 
 - `docs/cranker-v3-protocol.md`: protocol notes extracted from the Java connector
 - `docs/architecture.md`: feasibility analysis and Python design proposal
-- `fast_cc/`: initial Python package scaffold for the future implementation
+- `src/fastcc/`: the connector package
+- `integration/`: example app, Maven-based router setup, and e2e runner
 
 Status:
 
@@ -21,7 +22,14 @@ Status:
 Use `uv` for environment and command execution:
 
 ```bash
-cd fast-cc
+cd fastcc
 uv sync
-uv run python -m compileall fast_cc
+uv run python -m compileall src/fastcc
+```
+
+Run the full integration test with one command:
+
+```bash
+cd fastcc
+./integration/run_e2e.sh
 ```
