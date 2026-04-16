@@ -32,7 +32,7 @@ except ImportError:  # pragma: no cover
     from websockets.client import connect  # type: ignore
 
 
-logger = logging.getLogger("fast_cc.connector")
+logger = logging.getLogger("fastcc.connector")
 
 ASGIReceive = Callable[[], Awaitable[dict[str, Any]]]
 ASGISend = Callable[[dict[str, Any]], Awaitable[None]]
@@ -144,7 +144,7 @@ class CrankerSession:
         self._writer_task: asyncio.Task[None] | None = None
 
     async def run(self) -> None:
-        self._writer_task = asyncio.create_task(self._writer_loop(), name="fast-cc-writer")
+        self._writer_task = asyncio.create_task(self._writer_loop(), name="fastcc-writer")
         try:
             async for raw_message in self.websocket:
                 if not isinstance(raw_message, bytes):
@@ -208,7 +208,7 @@ class CrankerSession:
         request_head = parse_request_head("".join(state.header_chunks))
         state.app_task = asyncio.create_task(
             self._run_asgi_request(state, request_head),
-            name=f"fast-cc-request-{frame.request_id}",
+            name=f"fastcc-request-{frame.request_id}",
         )
         if frame.is_stream_end:
             await state.request_queue.put(_REQUEST_END)
@@ -343,7 +343,7 @@ class CrankerConnector:
             for slot in range(self.config.sliding_window_size):
                 task = asyncio.create_task(
                     self._socket_worker(router_url, slot),
-                    name=f"fast-cc-router-{slot}",
+                    name=f"fastcc-router-{slot}",
                 )
                 self._tasks.append(task)
 
