@@ -223,6 +223,7 @@ class CrankerSession:
             await state.request_queue.put(_REQUEST_END)
 
     async def _run_asgi_request(self, state: _StreamState, request_head: Any) -> None:
+        await self.connector._request_started()
         try:
             scope = self._build_scope(request_head)
             app = self.connector.app
@@ -259,6 +260,8 @@ class CrankerSession:
                             f"asgi app error: {exc}",
                         )
                     )
+        finally:
+            await self.connector._request_finished()
 
     @staticmethod
     async def _send_503(send: ASGISend) -> None:
@@ -348,9 +351,21 @@ class CrankerConnector:
         self._refresh_task: asyncio.Task[None] | None = None
         self._shutdown = asyncio.Event()
         self._started = False
+        self._active_request_count = 0
+        self._active_request_condition = asyncio.Condition()
 
         if app is not None:
             self._register_hooks(app)
+
+    async def _request_started(self) -> None:
+        async with self._active_request_condition:
+            self._active_request_count += 1
+
+    async def _request_finished(self) -> None:
+        async with self._active_request_condition:
+            self._active_request_count = max(0, self._active_request_count - 1)
+            if self._active_request_count == 0:
+                self._active_request_condition.notify_all()
 
     async def attach(self, app: ASGIApp) -> None:
         """Attach an ASGI app and automatically start the connector if not already started."""
@@ -405,6 +420,7 @@ class CrankerConnector:
             await asyncio.gather(self._refresh_task, return_exceptions=True)
             self._refresh_task = None
         await self._deregister_all()
+        await self._wait_for_active_requests()
         for task in self._router_tasks.values():
             task.cancel()
         results = await asyncio.gather(*self._router_tasks.values(), return_exceptions=True)
@@ -414,6 +430,23 @@ class CrankerConnector:
         self._router_tasks.clear()
         self._started = False
         self.app = None  # auto detach on shutdown
+
+    async def _wait_for_active_requests(self) -> None:
+        try:
+            async with self._active_request_condition:
+                await asyncio.wait_for(
+                    self._wait_until_no_active_requests(),
+                    timeout=self.config.deregister_timeout_seconds,
+                )
+        except TimeoutError:
+            logger.warning(
+                "graceful deregistration timed out with %s active request(s)",
+                self._active_request_count,
+            )
+
+    async def _wait_until_no_active_requests(self) -> None:
+        while self._active_request_count > 0:
+            await self._active_request_condition.wait()
 
     async def _router_refresh_loop(self) -> None:
         while not self._shutdown.is_set():
@@ -494,6 +527,7 @@ class CrankerConnector:
         return parsed._replace(netloc=f"{host_text}:{port}" if port is not None else host_text).geturl()
 
     async def _socket_worker(self, router_url: str, slot: int) -> None:
+        attempts = 0
         while not self._shutdown.is_set():
             try:
                 async with connect(
@@ -510,6 +544,7 @@ class CrankerConnector:
                             f"expected negotiated subprotocol {CRANKER_V3}, got {websocket.subprotocol!r}"
                         )
                     logger.info("connected to router %s on slot %s", router_url, slot)
+                    attempts = 0
                     session = CrankerSession(self, websocket)
                     await session.run()
                     logger.info(
@@ -523,7 +558,11 @@ class CrankerConnector:
                 raise
             except Exception:
                 logger.exception("router worker failed for %s slot %s", router_url, slot)
-                await asyncio.sleep(self.config.reconnect_delay_seconds)
+                attempts += 1
+                await asyncio.sleep(self._retry_delay_seconds(attempts))
+
+    def _retry_delay_seconds(self, attempts: int) -> float:
+        return min(10.0, self.config.reconnect_delay_seconds * float(2 ** max(0, attempts - 1)))
 
     async def _deregister_all(self) -> None:
         router_urls = {router_url for router_url, _ in self._router_tasks}

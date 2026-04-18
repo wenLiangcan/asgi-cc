@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import re
 from typing import Awaitable, Callable
 
 
@@ -27,3 +28,9 @@ class CrankerConnectorConfig:
     forwarded_scheme: str | None = None
     verify_ssl: bool = True
     reconnect_delay_seconds: float = 1.0
+
+    def __post_init__(self) -> None:
+        if not self.route:
+            raise ValueError("route cannot be empty")
+        if self.route != "*" and not re.fullmatch(r"[a-zA-Z0-9/_-]+", self.route):
+            raise ValueError("Routes must contain only letters, numbers, underscores or hyphens")
