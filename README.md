@@ -161,6 +161,7 @@ Environment variables:
 ```bash
 cd fastcc
 uv run python -m compileall src/asgi_cc integration
+uv run ty check
 ```
 
 ## Status

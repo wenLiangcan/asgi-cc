@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import inspect
 import logging
 import ssl
 import uuid
 from dataclasses import dataclass, field
 from ipaddress import ip_address
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, cast
 from urllib.parse import unquote, urlparse
 
 from .config import CrankerConnectorConfig
@@ -37,7 +38,7 @@ logger = logging.getLogger("asgi_cc.connector")
 
 ASGIReceive = Callable[[], Awaitable[dict[str, Any]]]
 ASGISend = Callable[[dict[str, Any]], Awaitable[None]]
-ASGIApp = Callable[[dict[str, Any], ASGIReceive, ASGISend], Awaitable[None]]
+ASGIApp = Any
 
 _REQUEST_END = object()
 _REQUEST_DISCONNECT = object()
@@ -344,7 +345,9 @@ class CrankerConnector:
         config: CrankerConnectorConfig | None = None,
     ) -> None:
         self.app = app
-        self.config = config or CrankerConnectorConfig()
+        if config is None:
+            raise ValueError("config is required")
+        self.config = config
         if self.config.connector_instance_id is None:
             self.config.connector_instance_id = str(uuid.uuid4())
         self._router_tasks: dict[tuple[str, int], asyncio.Task[None]] = {}
@@ -491,9 +494,9 @@ class CrankerConnector:
     async def _resolve_router_urls(self) -> list[str]:
         if self.config.router_resolver is not None:
             resolved = self.config.router_resolver(self.config.router_urls)
-            if hasattr(resolved, "__await__"):
+            if inspect.isawaitable(resolved):
                 resolved = await resolved
-            return list(dict.fromkeys(resolved))
+            return list(dict.fromkeys(cast(list[str], resolved)))
 
         if not self.config.router_lookup_by_dns:
             return list(dict.fromkeys(self.config.router_urls))
@@ -532,7 +535,7 @@ class CrankerConnector:
             try:
                 async with connect(
                     self._register_url(router_url),
-                    subprotocols=self.config.preferred_protocols,
+                    subprotocols=cast(Any, tuple(self.config.preferred_protocols)),
                     additional_headers=self._registration_headers(),
                     ping_interval=self.config.ping_interval_seconds,
                     ping_timeout=self.config.idle_timeout_seconds,

@@ -6,7 +6,7 @@ import os
 import statistics
 import time
 from dataclasses import dataclass
-from typing import Awaitable, Callable
+from typing import Awaitable, Callable, TypeVar
 
 import httpx
 
@@ -22,6 +22,7 @@ from integration.common import (
 
 DIRECT_BASE = "http://127.0.0.1:{port}"
 PROXY_BASE = "https://localhost:12000"
+AppHandle = TypeVar("AppHandle")
 
 
 @dataclass(slots=True)
@@ -163,8 +164,8 @@ async def benchmark_connector(
     case: BenchmarkCase,
     requests: int,
     concurrency: int,
-    start_app: Callable[[int], Awaitable[object]],
-    stop_app: Callable[[object], None],
+    start_app: Callable[[int], Awaitable[AppHandle]],
+    stop_app: Callable[[AppHandle], None],
 ) -> ConnectorBenchmarkSummary:
     app_process = await start_app(app_port)
     try:

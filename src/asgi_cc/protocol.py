@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import IntEnum
 from http import HTTPStatus
 from typing import Iterable
-from urllib.parse import splitquery, urlsplit
+from urllib.parse import urlsplit
 
 
 CRANKER_V3 = "cranker_3.0"
@@ -47,13 +47,11 @@ class ParsedRequestHead:
 
     @property
     def path(self) -> str:
-        path, _ = splitquery(self.dest)
-        return path or "/"
+        return urlsplit(self.dest).path or "/"
 
     @property
     def query_string(self) -> bytes:
-        _, query = splitquery(self.dest)
-        return (query or "").encode("ascii")
+        return urlsplit(self.dest).query.encode("ascii")
 
     @property
     def raw_path(self) -> bytes:
