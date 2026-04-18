@@ -115,7 +115,7 @@ async def start_router_container() -> None:
     ensure_docker_available()
     stop_router_container()
     ensure_docker_network()
-    run_command(["docker", "build", "--pull=false", "-t", ROUTER_IMAGE, "-f", str(DOCKERFILE), "."], cwd=ROOT)
+    run_command(["docker", "build", "-t", ROUTER_IMAGE, "-f", str(DOCKERFILE), "."], cwd=ROOT)
     run_command(
         [
             "docker",

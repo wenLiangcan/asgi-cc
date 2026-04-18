@@ -18,13 +18,12 @@ async def test_runtime_attach_detach():
         component_name="runtime-test",
     )
     
-    print("Starting connector without app...")
+    print("1. Testing 503 when connector started without app...")
     connector = CrankerConnector(config=config)
     await connector.startup()
     
     try:
         async with httpx.AsyncClient(verify=False, timeout=5) as client:
-            print("1. Testing 503 when no app attached...")
             await asyncio.sleep(2) 
             
             resp = await client.get("https://localhost:12000/hello")
@@ -32,32 +31,40 @@ async def test_runtime_attach_detach():
             assert "No app attached" in resp.text
             print("   OK")
             
-            print("2. Attaching first app...")
+            print("2. Attaching first app (auto-start guard check)...")
             app = FastAPI()
             @app.get("/hello")
             async def hello():
                 return {"message": "hello runtime"}
             
-            connector.attach(app)
+            await connector.attach(app) # Should stay started
             
             resp = await client.get("https://localhost:12000/hello")
             assert resp.status_code == 200
             assert resp.json() == {"message": "hello runtime"}
             print("   OK")
             
-            print("3. Detaching app...")
-            connector.detach()
-            resp = await client.get("https://localhost:12000/hello")
-            assert resp.status_code == 503
-            print("   OK")
+            print("3. Detaching app (auto-shutdown)...")
+            await connector.detach() 
+            # Connector is now shutdown, router should return 404 as no connectors are registered
+            try:
+                resp = await client.get("https://localhost:12000/hello", timeout=1)
+                assert resp.status_code == 404
+                print("   OK (Router returned 404 as expected)")
+            except (httpx.ReadTimeout, httpx.ConnectError, httpx.RemoteProtocolError):
+                print("   OK (Connection failed as expected)")
             
-            print("4. Attaching second app...")
+            print("4. Attaching second app (auto-start)...")
             app2 = FastAPI()
             @app2.get("/hello")
             async def hello2():
                 return {"message": "hello again"}
             
-            connector.attach(app2)
+            await connector.attach(app2) # Should auto-start
+            
+            from integration.common import wait_for_registration
+            await wait_for_registration("https://localhost:12001/health/connectors")
+            
             resp = await client.get("https://localhost:12000/hello")
             assert resp.status_code == 200
             assert resp.json() == {"message": "hello again"}

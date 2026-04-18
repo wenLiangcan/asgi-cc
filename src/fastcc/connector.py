@@ -226,20 +226,7 @@ class CrankerSession:
             scope = self._build_scope(request_head)
             app = self.connector.app
             if app is None:
-                await state.send(
-                    {
-                        "type": "http.response.start",
-                        "status": 503,
-                        "headers": [(b"content-type", b"text/plain")],
-                    }
-                )
-                await state.send(
-                    {
-                        "type": "http.response.body",
-                        "body": b"Service Unavailable: No app attached",
-                        "more_body": False,
-                    }
-                )
+                await self._send_503(state.send)
                 return
 
             await app(scope, state.receive, state.send)
@@ -271,6 +258,23 @@ class CrankerSession:
                             f"asgi app error: {exc}",
                         )
                     )
+
+    @staticmethod
+    async def _send_503(send: ASGISend) -> None:
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 503,
+                "headers": [(b"content-type", b"text/plain")],
+            }
+        )
+        await send(
+            {
+                "type": "http.response.body",
+                "body": b"Service Unavailable: No app attached",
+                "more_body": False,
+            }
+        )
 
     def _build_scope(self, request_head: Any) -> dict[str, Any]:
         headers: list[tuple[bytes, bytes]] = []
@@ -346,26 +350,35 @@ class CrankerConnector:
         if app is not None:
             self._register_hooks(app)
 
-    def attach(self, app: ASGIApp) -> None:
-        """Attach an ASGI app to this connector."""
+    async def attach(self, app: ASGIApp) -> None:
+        """Attach an ASGI app and automatically start the connector if not already started."""
         self.app = app
         self._register_hooks(app)
+        if not self._started:
+            await self.startup()
 
-    def detach(self) -> None:
-        """Detach the current ASGI app from this connector."""
+    async def detach(self) -> None:
+        """Detach the current ASGI app and automatically shut down the connector."""
+        if self._started:
+            await self.shutdown()
         self.app = None
 
     def _register_hooks(self, app: ASGIApp) -> None:
+        logger.debug("registering hooks for app type: %s", type(app))
         add_event_handler = getattr(app, "add_event_handler", None)
         if callable(add_event_handler):
+            logger.debug("found add_event_handler on app")
             add_event_handler("startup", self.startup)
             add_event_handler("shutdown", self.shutdown)
         else:
             router = getattr(app, "router", None)
             on_event = getattr(router, "on_event", None)
             if callable(on_event):
+                logger.debug("found on_event on app.router")
                 on_event("startup")(self.startup)
                 on_event("shutdown")(self.shutdown)
+            else:
+                logger.debug("no lifecycle hooks found on app")
 
     async def startup(self) -> None:
         if self._started:
@@ -395,6 +408,7 @@ class CrankerConnector:
                 pass
         self._tasks.clear()
         self._started = False
+        self.app = None  # auto detach on shutdown
 
     async def _socket_worker(self, router_url: str, slot: int) -> None:
         while not self._shutdown.is_set():
@@ -472,6 +486,32 @@ class CrankerConnector:
         return context
 
     async def __call__(self, scope: dict[str, Any], receive: ASGIReceive, send: ASGISend) -> None:
+        if scope["type"] == "lifespan":
+            async def wrapped_receive() -> dict[str, Any]:
+                message = await receive()
+                if message["type"] == "lifespan.startup":
+                    await self.startup()
+                elif message["type"] == "lifespan.shutdown":
+                    await self.shutdown()
+                return message
+
+            if self.app is not None:
+                await self.app(scope, wrapped_receive, send)
+            else:
+                # Fallback if being used as the main ASGI app without an attached app
+                while True:
+                    message = await wrapped_receive()
+                    if message["type"] == "lifespan.startup":
+                        await send({"type": "lifespan.startup.complete"})
+                    elif message["type"] == "lifespan.shutdown":
+                        await send({"type": "lifespan.shutdown.complete"})
+                        return
+            return
+
         if self.app is None:
+            if scope["type"] == "http":
+                await CrankerSession._send_503(send)
+                return
             raise RuntimeError("No app attached to CrankerConnector")
+
         await self.app(scope, receive, send)

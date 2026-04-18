@@ -84,25 +84,25 @@ name = "fastcc"
 version = "0.0.1"
 source = { editable = "." }
 dependencies = [
-    { name = "fastapi" },
-    { name = "uvicorn" },
     { name = "websockets" },
 ]
 
 [package.dev-dependencies]
 dev = [
+    { name = "fastapi" },
     { name = "httpx" },
+    { name = "uvicorn" },
 ]
 
 [package.metadata]
-requires-dist = [
-    { name = "fastapi", specifier = ">=0.115.0" },
-    { name = "uvicorn", specifier = ">=0.34.0" },
-    { name = "websockets", specifier = ">=15.0.0" },
-]
+requires-dist = [{ name = "websockets", specifier = ">=15.0.0" }]
 
 [package.metadata.requires-dev]
-dev = [{ name = "httpx", specifier = ">=0.28.0" }]
+dev = [
+    { name = "fastapi", specifier = ">=0.115.0" },
+    { name = "httpx", specifier = ">=0.28.0" },
+    { name = "uvicorn", specifier = ">=0.34.0" },
+]
 
 [[package]]
 name = "h11"
