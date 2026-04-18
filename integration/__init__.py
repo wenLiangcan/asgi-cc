@@ -1,1 +1,1 @@
-"""Integration helpers and local runners for fastcc."""
+"""Integration helpers and local runners for asgi-cc."""

@@ -68,6 +68,12 @@ class ConnectorBenchmarkSummary:
         return self.proxied.rps / self.direct.rps if self.direct.rps else 0.0
 
 
+@dataclass(slots=True)
+class SlidingWindowBenchmarkSummary:
+    sliding_window_size: int
+    summary: ConnectorBenchmarkSummary
+
+
 def percentile(values: list[float], p: float) -> float:
     if not values:
         return 0.0
@@ -141,6 +147,15 @@ def print_connector_delta(python_summary: ConnectorBenchmarkSummary, java_summar
     print(f"  python_minus_java_mean_ratio: {ratio_gap:.2f}")
 
 
+def print_sliding_window_summary(summary: SlidingWindowBenchmarkSummary) -> None:
+    print(f"sliding-window-size={summary.sliding_window_size}")
+    print(f"  proxied_rps: {summary.summary.proxied.rps:.2f}")
+    print(f"  proxied_mean_ms: {statistics.fmean(summary.summary.proxied.latencies_ms):.2f}")
+    print(f"  mean_overhead_ms: {summary.summary.mean_overhead_ms:.2f}")
+    print(f"  mean_ratio: {summary.summary.mean_ratio:.2f}x")
+    print(f"  rps_ratio: {summary.summary.rps_ratio:.2f}x")
+
+
 async def benchmark_connector(
     *,
     connector_name: str,
@@ -176,12 +191,55 @@ async def benchmark_connector(
         stop_app(app_process)
 
 
+async def benchmark_python_sliding_window(
+    *,
+    app_port: int,
+    case: BenchmarkCase,
+    requests: int,
+    concurrency: int,
+    sliding_window_size: int,
+) -> SlidingWindowBenchmarkSummary:
+    summary = await benchmark_connector(
+        connector_name=f"python-asgi-cc-window-{sliding_window_size}",
+        app_port=app_port,
+        case=case,
+        requests=requests,
+        concurrency=concurrency,
+        start_app=lambda port: start_example_app(
+            port,
+            extra_env={"ASGI_CC_SLIDING_WINDOW_SIZE": str(sliding_window_size)},
+        ),
+        stop_app=stop_example_app,
+    )
+    return SlidingWindowBenchmarkSummary(
+        sliding_window_size=sliding_window_size,
+        summary=summary,
+    )
+
+
+def parse_sliding_window_sizes() -> list[int]:
+    raw_value = os.environ.get("ASGI_CC_BENCH_SLIDING_WINDOWS", "1,2,4,8")
+    values: list[int] = []
+    for item in raw_value.split(","):
+        stripped = item.strip()
+        if not stripped:
+            continue
+        value = int(stripped)
+        if value <= 0:
+            raise ValueError("ASGI_CC_BENCH_SLIDING_WINDOWS must contain positive integers")
+        values.append(value)
+    if not values:
+        raise ValueError("ASGI_CC_BENCH_SLIDING_WINDOWS must not be empty")
+    return values
+
+
 async def main() -> int:
-    python_app_port = int(os.environ.get("FASTCC_APP_PORT", "18081"))
-    java_app_port = int(os.environ.get("FASTCC_JAVA_APP_PORT", "18082"))
-    requests = int(os.environ.get("FASTCC_BENCH_REQUESTS", "300"))
-    concurrency = int(os.environ.get("FASTCC_BENCH_CONCURRENCY", "30"))
-    payload_size = int(os.environ.get("FASTCC_BENCH_PAYLOAD_SIZE", "1024"))
+    python_app_port = int(os.environ.get("ASGI_CC_APP_PORT", "18081"))
+    java_app_port = int(os.environ.get("ASGI_CC_JAVA_APP_PORT", "18082"))
+    requests = int(os.environ.get("ASGI_CC_BENCH_REQUESTS", "300"))
+    concurrency = int(os.environ.get("ASGI_CC_BENCH_CONCURRENCY", "30"))
+    payload_size = int(os.environ.get("ASGI_CC_BENCH_PAYLOAD_SIZE", "1024"))
+    sliding_window_sizes = parse_sliding_window_sizes()
     payload = b"x" * payload_size
 
     cases = [
@@ -200,7 +258,7 @@ async def main() -> int:
         for case in cases:
             print(f"\ncase: {case.name}")
             python_summary = await benchmark_connector(
-                connector_name="python-fastcc",
+                connector_name="python-asgi-cc",
                 app_port=python_app_port,
                 case=case,
                 requests=requests,
@@ -218,9 +276,9 @@ async def main() -> int:
                 stop_app=stop_java_example_app,
             )
 
-            print("python-fastcc direct")
+            print("python-asgi-cc direct")
             print_result("direct", python_summary.direct)
-            print("python-fastcc proxied")
+            print("python-asgi-cc proxied")
             print_result("proxied", python_summary.proxied)
             print_summary(python_summary)
 
@@ -231,6 +289,27 @@ async def main() -> int:
             print_summary(java_summary)
 
             print_connector_delta(python_summary, java_summary)
+
+            print("python-asgi-cc sliding-window sweep")
+            sliding_window_summaries: list[SlidingWindowBenchmarkSummary] = []
+            for sliding_window_size in sliding_window_sizes:
+                summary = await benchmark_python_sliding_window(
+                    app_port=python_app_port,
+                    case=case,
+                    requests=requests,
+                    concurrency=concurrency,
+                    sliding_window_size=sliding_window_size,
+                )
+                print_sliding_window_summary(summary)
+                sliding_window_summaries.append(summary)
+
+            best_rps = max(sliding_window_summaries, key=lambda item: item.summary.proxied.rps)
+            best_latency = min(sliding_window_summaries, key=lambda item: item.summary.mean_overhead_ms)
+            print("sliding-window best")
+            print(f"  best_rps_window: {best_rps.sliding_window_size}")
+            print(f"  best_rps: {best_rps.summary.proxied.rps:.2f}")
+            print(f"  lowest_overhead_window: {best_latency.sliding_window_size}")
+            print(f"  lowest_overhead_ms: {best_latency.summary.mean_overhead_ms:.2f}")
         return 0
     finally:
         stop_router_container()

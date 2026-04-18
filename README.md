@@ -1,63 +1,153 @@
-# fastcc
+# asgi-cc
 
-Python work area for a Cranker connector targeting ASGI/FastAPI services.
+`asgi-cc` is a Python Cranker connector for ASGI applications. It connects an ASGI app to a Cranker router over WebSocket and forwards HTTP traffic through the Cranker v3 protocol without introducing a loopback HTTP hop inside the service process.
 
-Package manager: `uv`
+The project is designed to let existing ASGI applications participate in a Cranker deployment with minimal integration work. The current implementation targets the latest protocol generation only: `cranker_3.0`.
 
-This directory currently contains:
+## Features
 
-- `docs/cranker-v3-protocol.md`: protocol notes extracted from the Java connector
-- `docs/architecture.md`: feasibility analysis and Python design proposal
-- `docs/benchmark.md`: local direct-vs-proxied benchmark results
-- `src/fastcc/`: the connector package
-- `integration/`: example app, Maven-based router setup, and e2e runner
+- ASGI-native request and response bridging
+- Cranker v3 (`cranker_3.0`) protocol support
+- FastAPI-compatible integration model
+- Runtime app attach and detach support
 
-Status:
+## Requirements
 
-- Only Cranker protocol `cranker_3.0` is in scope.
-- The current code is a scaffold, not a finished connector.
-- The intended design is an ASGI adapter around an existing FastAPI app, not a loopback HTTP proxy.
+- Python `3.11+`
 
-## Workflow
+## Usage Patterns
 
-Use `uv` for environment and command execution:
+`asgi-cc` supports two practical integration patterns for ASGI applications.
 
-```bash
-cd fastcc
-uv sync
-uv run python -m compileall src/fastcc
+### Wrapper Pattern
+
+Create the connector with the application and let the app's startup and shutdown hooks manage the connector lifecycle:
+
+```python
+import os
+
+from fastapi import FastAPI
+
+from asgi_cc import CrankerConnector, CrankerConnectorConfig
+
+app = FastAPI()
+
+
+@app.get("/hello")
+async def hello() -> dict[str, str]:
+    return {"message": "hello from wrapper"}
+
+
+connector = CrankerConnector(
+    app,
+    CrankerConnectorConfig(
+        router_urls=[os.environ.get("CRANKER_ROUTER_URL", "wss://localhost:12001")],
+        route="*",
+        verify_ssl=False,
+        component_name="wrapper-pattern",
+    ),
+)
 ```
 
-Run the full integration test with one command:
+Keep using `app` as the ASGI server entrypoint. The connector registers itself on the app lifecycle hooks.
+
+### Middleware Pattern
+
+Attach the connector as middleware and keep the application as the ASGI entrypoint:
+
+```python
+import os
+
+from fastapi import FastAPI
+
+from asgi_cc import CrankerConnector, CrankerConnectorConfig
+
+app = FastAPI()
+
+app.add_middleware(
+    CrankerConnector,
+    config=CrankerConnectorConfig(
+        router_urls=[os.environ.get("CRANKER_ROUTER_URL", "wss://localhost:12001")],
+        route="*",
+        verify_ssl=False,
+        component_name="middleware-pattern",
+    ),
+)
+
+
+@app.get("/hello")
+async def hello() -> dict[str, str]:
+    return {"message": "hello from middleware"}
+```
+
+Reference examples live under `integration/patterns/`.
+
+## Runtime App Management
+
+`CrankerConnector` can be started without an attached ASGI app and can attach or detach an app at runtime.
+
+```python
+connector = CrankerConnector(config=config)
+
+await connector.attach(app)
+await connector.detach()
+```
+
+If the connector is started without an attached app, incoming requests receive `503 Service Unavailable` until an app is attached.
+
+## Integration Test
+
+Run the local end-to-end verification against the Dockerized Cranker router:
 
 ```bash
 cd fastcc
 ./integration/run_e2e.sh
 ```
 
-Run a simple local benchmark comparing direct FastAPI calls vs Cranker-proxied calls:
+## Benchmark
+
+Run the local benchmark suite:
 
 ```bash
 cd fastcc
 ./integration/run_benchmark.sh
 ```
 
-The benchmark also runs a Java app using the official Java connector and compares connector-added latency between the Python and Java implementations.
+The benchmark compares:
 
-## Runtime Attach/Detach
+- direct requests to the ASGI app
+- requests proxied through Cranker with `asgi-cc`
+- requests proxied through Cranker with the Java connector reference setup
+- Python connector runs with multiple `sliding_window_size` values to show how connection parallelism affects performance
 
-`CrankerConnector` supports attaching to and detaching from an ASGI app at runtime. These operations automatically manage the connector's connection to the router.
+Environment variables:
 
-```python
-connector = CrankerConnector(config=config)
+- `ASGI_CC_APP_PORT`
+- `ASGI_CC_JAVA_APP_PORT`
+- `ASGI_CC_BENCH_REQUESTS`
+- `ASGI_CC_BENCH_CONCURRENCY`
+- `ASGI_CC_BENCH_PAYLOAD_SIZE`
+- `ASGI_CC_BENCH_SLIDING_WINDOWS`
 
-# Attach an app: automatically calls await connector.startup() 
-# and connects to the router if not already started.
-await connector.attach(fastapi_app)
+## Developer Notes
 
-# Detach the app: automatically calls await connector.shutdown()
-# and disconnects from the router.
-await connector.detach()
+### Project Layout
+
+- `src/asgi_cc/`: connector package
+- `docs/cranker-v3-protocol.md`: protocol notes extracted from the Java connector
+- `docs/architecture.md`: architecture and feasibility notes
+- `docs/benchmark.md`: local benchmark results
+- `integration/`: local router setup, example app, verification scripts, and benchmark tooling
+
+### Development Checks
+
+```bash
+cd fastcc
+uv run python -m compileall src/asgi_cc integration
 ```
 
-If you start the connector without an app (by calling `await connector.startup()` manually), it will return a `503 Service Unavailable` response to any incoming requests until an app is attached.
+## Status
+
+- `cranker_3.0` is the only supported protocol version
+- the project focuses on ASGI applications rather than an internal loopback HTTP client
+- the integration and benchmark tooling are intended for local validation during development

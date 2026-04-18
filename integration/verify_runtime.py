@@ -4,7 +4,7 @@ import asyncio
 import os
 import httpx
 from fastapi import FastAPI
-from fastcc import CrankerConnector, CrankerConnectorConfig
+from asgi_cc import CrankerConnector, CrankerConnectorConfig
 from integration.common import start_router_container, stop_router_container
 
 async def test_runtime_attach_detach():

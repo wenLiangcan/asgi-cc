@@ -8,7 +8,7 @@ class CrankerConnectorConfig:
     router_urls: list[str]
     route: str
     domain: str = "*"
-    component_name: str = "fastcc"
+    component_name: str = "asgi-cc"
     connector_instance_id: str | None = None
     preferred_protocols: list[str] = field(default_factory=lambda: ["cranker_3.0"])
     sliding_window_size: int = 2

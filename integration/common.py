@@ -15,13 +15,13 @@ import httpx
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 INTEGRATION_DIR = ROOT / "integration"
 DOCKERFILE = INTEGRATION_DIR / "router" / "Dockerfile"
-ROUTER_IMAGE = "fastcc-router"
-ROUTER_CONTAINER = "fastcc-router-test"
+ROUTER_IMAGE = "asgi-cc-router"
+ROUTER_CONTAINER = "asgi-cc-router-test"
 JAVA_APP_DIR = INTEGRATION_DIR / "java_app"
 JAVA_APP_DOCKERFILE = JAVA_APP_DIR / "Dockerfile"
-JAVA_APP_IMAGE = "fastcc-java-bench-app"
-JAVA_APP_CONTAINER = "fastcc-java-bench-app-test"
-DOCKER_NETWORK = "fastcc-bench-net"
+JAVA_APP_IMAGE = "asgi-cc-java-bench-app"
+JAVA_APP_CONTAINER = "asgi-cc-java-bench-app-test"
+DOCKER_NETWORK = "asgi-cc-bench-net"
 
 
 async def wait_for_health(url: str, verify: bool) -> None:
@@ -136,10 +136,16 @@ async def start_router_container() -> None:
     await wait_for_health("https://localhost:12001/health", verify=False)
 
 
-async def start_example_app(app_port: int) -> subprocess.Popen[str]:
+async def start_example_app(
+    app_port: int,
+    *,
+    extra_env: dict[str, str] | None = None,
+) -> subprocess.Popen[str]:
     env = os.environ.copy()
     env.setdefault("CRANKER_ROUTER_URL", "wss://localhost:12001")
     env.setdefault("CRANKER_VERIFY_SSL", "false")
+    if extra_env:
+        env.update(extra_env)
 
     server = subprocess.Popen(
         [
@@ -192,9 +198,9 @@ async def start_java_example_app(app_port: int) -> str:
             "--network",
             DOCKER_NETWORK,
             "-e",
-            "CRANKER_ROUTER_URL=wss://fastcc-router-test:12001",
+            "CRANKER_ROUTER_URL=wss://asgi-cc-router-test:12001",
             "-e",
-            f"FASTCC_JAVA_APP_PORT={app_port}",
+            f"ASGI_CC_JAVA_APP_PORT={app_port}",
             "-p",
             f"{app_port}:{app_port}",
             JAVA_APP_IMAGE,

@@ -1,8 +1,11 @@
-from fastapi import FastAPI
-from fastcc import CrankerConnector, CrankerConnectorConfig
 import os
 
+from fastapi import FastAPI
+
+from asgi_cc import CrankerConnector, CrankerConnectorConfig
+
 app = FastAPI()
+
 
 @app.get("/hello")
 async def hello():
@@ -15,8 +18,5 @@ config = CrankerConnectorConfig(
     component_name="wrapper-pattern",
 )
 
-# The connector wraps the app
+# The connector attaches to the app lifecycle hooks.
 connector = CrankerConnector(app, config=config)
-
-# Entry point for uvicorn is 'connector'
-app = connector

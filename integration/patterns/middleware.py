@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from fastcc import CrankerConnector, CrankerConnectorConfig
+from asgi_cc import CrankerConnector, CrankerConnectorConfig
 import os
 
 app = FastAPI()

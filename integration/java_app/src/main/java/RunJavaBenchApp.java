@@ -17,7 +17,7 @@ import java.util.concurrent.TimeUnit;
 
 public class RunJavaBenchApp {
     public static void main(String[] args) throws Exception {
-        int appPort = Integer.parseInt(System.getenv().getOrDefault("FASTCC_JAVA_APP_PORT", "18082"));
+        int appPort = Integer.parseInt(System.getenv().getOrDefault("ASGI_CC_JAVA_APP_PORT", "18082"));
         String routerUrl = System.getenv().getOrDefault("CRANKER_ROUTER_URL", "wss://localhost:12001");
         String route = System.getenv().getOrDefault("CRANKER_ROUTE", "*");
 
@@ -37,7 +37,7 @@ public class RunJavaBenchApp {
             .withHttpClient(client)
             .withRouterUris(() -> java.util.List.of(URI.create(routerUrl)))
             .withRoute(route)
-            .withComponentName("fastcc-java-demo")
+            .withComponentName("asgi-cc-java-demo")
             .withTarget(URI.create("http://127.0.0.1:" + appPort))
             .start();
 
