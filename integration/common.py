@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import pathlib
+import re
 import shutil
 import signal
 import subprocess
@@ -60,6 +62,39 @@ async def wait_for_registration(url: str) -> None:
     raise RuntimeError(f"timed out waiting for connector registration at {url}")
 
 
+async def fetch_connection_count(url: str) -> int:
+    async with httpx.AsyncClient(verify=False, timeout=5) as client:
+        response = await client.get(url)
+        response.raise_for_status()
+        text = response.text.strip()
+
+    if not text or text == "{}":
+        return 0
+
+    with contextlib.suppress(Exception):
+        payload = response.json()
+        services = payload.get("services", {})
+        connection_count = 0
+        for service in services.values():
+            connectors = service.get("connectors", [])
+            for connector in connectors:
+                connection_count += int(connector.get("connectionCount", 0))
+        return connection_count
+
+    matches = re.findall(r"connectionCount=(\d+)", text)
+    return sum(int(match) for match in matches)
+
+
+async def wait_for_connection_count(url: str, expected: int) -> int:
+    deadline = time.time() + 60
+    while time.time() < deadline:
+        count = await fetch_connection_count(url)
+        if count == expected:
+            return count
+        await asyncio.sleep(1)
+    raise RuntimeError(f"timed out waiting for connection count {expected} at {url}")
+
+
 def run_command(command: list[str], *, cwd: pathlib.Path | None = None) -> None:
     subprocess.run(command, cwd=cwd or ROOT, check=True)
 
@@ -115,7 +150,7 @@ async def start_router_container() -> None:
     ensure_docker_available()
     stop_router_container()
     ensure_docker_network()
-    run_command(["docker", "build", "-t", ROUTER_IMAGE, "-f", str(DOCKERFILE), "."], cwd=ROOT)
+    run_command(["docker", "build", "--pull=false", "-t", ROUTER_IMAGE, "-f", str(DOCKERFILE), "."], cwd=ROOT)
     run_command(
         [
             "docker",

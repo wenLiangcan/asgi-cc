@@ -19,6 +19,8 @@ connector = CrankerConnector(
         route=os.environ.get("CRANKER_ROUTE", "*"),
         domain=os.environ.get("CRANKER_DOMAIN", "*"),
         component_name="asgi-cc-demo",
+        router_lookup_by_dns=os.environ.get("ASGI_CC_ROUTER_LOOKUP_BY_DNS", "false").lower() == "true",
+        router_update_interval_seconds=float(os.environ.get("ASGI_CC_ROUTER_UPDATE_INTERVAL_SECONDS", "60")),
         sliding_window_size=int(os.environ.get("ASGI_CC_SLIDING_WINDOW_SIZE", "2")),
         verify_ssl=os.environ.get("CRANKER_VERIFY_SSL", "false").lower() == "true",
     ),

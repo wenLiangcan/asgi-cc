@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Awaitable, Callable
+
+
+RouterResolver = Callable[[list[str]], Awaitable[list[str]] | list[str]]
 
 
 @dataclass(slots=True)
@@ -11,6 +15,9 @@ class CrankerConnectorConfig:
     component_name: str = "asgi-cc"
     connector_instance_id: str | None = None
     preferred_protocols: list[str] = field(default_factory=lambda: ["cranker_3.0"])
+    router_lookup_by_dns: bool = False
+    router_update_interval_seconds: float = 60.0
+    router_resolver: RouterResolver | None = None
     sliding_window_size: int = 2
     ping_interval_seconds: float = 5.0
     idle_timeout_seconds: float = 20.0

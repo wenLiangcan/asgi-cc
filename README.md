@@ -95,6 +95,23 @@ await connector.detach()
 
 If the connector is started without an attached app, incoming requests receive `503 Service Unavailable` until an app is attached.
 
+## Router Discovery
+
+By default, `asgi-cc` connects to the router URLs listed in `router_urls`.
+
+To follow DNS A/AAAA records and reconcile router registrations as DNS changes, enable DNS-based router discovery:
+
+```python
+config = CrankerConnectorConfig(
+    router_urls=["wss://router.example.org"],
+    route="*",
+    router_lookup_by_dns=True,
+    router_update_interval_seconds=60,
+)
+```
+
+When enabled, `asgi-cc` resolves the router hostnames to IP addresses, opens registrations for the currently resolved routers, and periodically adds or removes router registrations as DNS changes.
+
 ## Integration Test
 
 Run the local end-to-end verification against the Dockerized Cranker router:

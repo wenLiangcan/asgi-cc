@@ -6,6 +6,7 @@ import logging
 import ssl
 import uuid
 from dataclasses import dataclass, field
+from ipaddress import ip_address
 from typing import Any, Awaitable, Callable
 from urllib.parse import unquote, urlparse
 
@@ -343,7 +344,8 @@ class CrankerConnector:
         self.config = config or CrankerConnectorConfig()
         if self.config.connector_instance_id is None:
             self.config.connector_instance_id = str(uuid.uuid4())
-        self._tasks: list[asyncio.Task[None]] = []
+        self._router_tasks: dict[tuple[str, int], asyncio.Task[None]] = {}
+        self._refresh_task: asyncio.Task[None] | None = None
         self._shutdown = asyncio.Event()
         self._started = False
 
@@ -386,29 +388,110 @@ class CrankerConnector:
         logger.info("starting connector for routes=%s", self.config.route)
         self._started = True
         self._shutdown = asyncio.Event()
-        for router_url in self.config.router_urls:
-            for slot in range(self.config.sliding_window_size):
-                task = asyncio.create_task(
-                    self._socket_worker(router_url, slot),
-                    name=f"asgi-cc-router-{slot}",
-                )
-                self._tasks.append(task)
+        await self._refresh_router_registrations()
+        if self.config.router_lookup_by_dns:
+            self._refresh_task = asyncio.create_task(
+                self._router_refresh_loop(),
+                name="asgi-cc-router-refresh",
+            )
 
     async def shutdown(self) -> None:
         if not self._started:
             return
         logger.info("shutting down connector")
         self._shutdown.set()
+        if self._refresh_task is not None:
+            self._refresh_task.cancel()
+            await asyncio.gather(self._refresh_task, return_exceptions=True)
+            self._refresh_task = None
         await self._deregister_all()
-        for task in self._tasks:
+        for task in self._router_tasks.values():
             task.cancel()
-        results = await asyncio.gather(*self._tasks, return_exceptions=True)
+        results = await asyncio.gather(*self._router_tasks.values(), return_exceptions=True)
         for result in results:
             if isinstance(result, Exception) and not isinstance(result, asyncio.CancelledError):
                 pass
-        self._tasks.clear()
+        self._router_tasks.clear()
         self._started = False
         self.app = None  # auto detach on shutdown
+
+    async def _router_refresh_loop(self) -> None:
+        while not self._shutdown.is_set():
+            try:
+                await asyncio.sleep(self.config.router_update_interval_seconds)
+                if self._shutdown.is_set():
+                    return
+                await self._refresh_router_registrations()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("router DNS refresh failed")
+
+    async def _refresh_router_registrations(self) -> None:
+        resolved_router_urls = await self._resolve_router_urls()
+        desired_keys = {
+            (router_url, slot)
+            for router_url in resolved_router_urls
+            for slot in range(self.config.sliding_window_size)
+        }
+        existing_keys = set(self._router_tasks)
+        removed_router_urls = {router_url for router_url, _ in (existing_keys - desired_keys)}
+
+        for router_url in sorted(removed_router_urls):
+            logger.info("removing router %s after router update", router_url)
+            await self._deregister_router(router_url)
+
+        for key in sorted(existing_keys - desired_keys):
+            router_url, slot = key
+            task = self._router_tasks.pop(key)
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+
+        for key in sorted(desired_keys - existing_keys):
+            router_url, slot = key
+            logger.info("adding router %s slot %s after router update", router_url, slot)
+            self._router_tasks[key] = asyncio.create_task(
+                self._socket_worker(router_url, slot),
+                name=f"asgi-cc-router-{slot}",
+            )
+
+    async def _resolve_router_urls(self) -> list[str]:
+        if self.config.router_resolver is not None:
+            resolved = self.config.router_resolver(self.config.router_urls)
+            if hasattr(resolved, "__await__"):
+                resolved = await resolved
+            return list(dict.fromkeys(resolved))
+
+        if not self.config.router_lookup_by_dns:
+            return list(dict.fromkeys(self.config.router_urls))
+
+        loop = asyncio.get_running_loop()
+        resolved: list[str] = []
+        for router_url in self.config.router_urls:
+            parsed = urlparse(router_url)
+            if parsed.scheme not in {"ws", "wss"}:
+                raise ValueError(f"router URL must use ws or wss: {router_url!r}")
+            if parsed.hostname is None:
+                raise ValueError(f"router URL must include a hostname: {router_url!r}")
+
+            default_port = 443 if parsed.scheme == "wss" else 80
+            address_info = await loop.getaddrinfo(
+                parsed.hostname,
+                parsed.port or default_port,
+                type=0,
+                proto=0,
+            )
+            for _, _, _, _, sockaddr in address_info:
+                host = sockaddr[0]
+                resolved.append(self._replace_host_with_ip(parsed, host))
+        return list(dict.fromkeys(resolved))
+
+    def _replace_host_with_ip(self, parsed: Any, host: str) -> str:
+        port = parsed.port
+        host_text = ip_address(host).compressed
+        if ":" in host_text:
+            host_text = f"[{host_text}]"
+        return parsed._replace(netloc=f"{host_text}:{port}" if port is not None else host_text).geturl()
 
     async def _socket_worker(self, router_url: str, slot: int) -> None:
         while not self._shutdown.is_set():
@@ -443,15 +526,19 @@ class CrankerConnector:
                 await asyncio.sleep(self.config.reconnect_delay_seconds)
 
     async def _deregister_all(self) -> None:
-        for router_url in self.config.router_urls:
-            with contextlib.suppress(Exception):
-                async with connect(
-                    self._deregister_url(router_url),
-                    additional_headers=self._registration_headers(),
-                    ssl=self._ssl_context_for_url(router_url),
-                    open_timeout=5,
-                ) as websocket:
-                    await websocket.close()
+        router_urls = {router_url for router_url, _ in self._router_tasks}
+        for router_url in router_urls:
+            await self._deregister_router(router_url)
+
+    async def _deregister_router(self, router_url: str) -> None:
+        with contextlib.suppress(Exception):
+            async with connect(
+                self._deregister_url(router_url),
+                additional_headers=self._registration_headers(),
+                ssl=self._ssl_context_for_url(router_url),
+                open_timeout=5,
+            ) as websocket:
+                await websocket.close()
 
     def _registration_headers(self) -> list[tuple[str, str]]:
         return [
