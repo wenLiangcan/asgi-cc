@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+      - dev
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version:
+          - "3.11"
+          - "3.12"
+          - "3.13"
+          - "3.14"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Sync dependencies
+        run: uv sync --dev
+
+      - name: Type check
+        run: uv run ty check
+
+      - name: Compile source tree
+        run: uv run python -m compileall src/asgi_cc integration
+
+      - name: Run integration suite
+        run: |
+          set -eu
+          uv run python -m integration.run_e2e
+          uv run python -m integration.verify_patterns
+          uv run python -m integration.verify_runtime
+          uv run python -m integration.verify_dns_lookup
+          uv run python -m integration.verify_dns_refresh
+          uv run python -m integration.verify_connector_behaviors
