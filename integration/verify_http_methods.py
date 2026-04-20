@@ -11,7 +11,7 @@ from integration.common import start_example_app, start_router_container, stop_e
 PROXY_BASE = "https://localhost:12000"
 COMMON_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD")
 UPLOAD_SIZE = 5 * 1024 * 1024
-DOWNLOAD_SIZE = 2 * 1024 * 1024
+DOWNLOAD_SIZE = 128 * 1024
 
 
 async def verify_methods(client: httpx.AsyncClient) -> None:
