@@ -3,8 +3,8 @@ from __future__ import annotations
 import os
 import logging
 
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi import FastAPI, Request, Response
+from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 
 from asgi_cc import CrankerConnector, CrankerConnectorConfig
 
@@ -42,6 +42,46 @@ async def echo(request: Request) -> JSONResponse:
             "body_text": body.decode("utf-8"),
         }
     )
+
+
+@app.api_route(
+    "/methods",
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
+)
+async def methods(request: Request) -> Response:
+    body = await request.body()
+    headers = {"x-method-seen": request.method}
+    payload = {
+        "method": request.method,
+        "path": request.url.path,
+        "query": request.url.query,
+        "body_size": len(body),
+    }
+    if request.method == "HEAD":
+        return Response(status_code=200, headers=headers)
+    return JSONResponse(payload, headers=headers)
+
+
+@app.put("/upload-size")
+async def upload_size(request: Request) -> JSONResponse:
+    size = 0
+    async for chunk in request.stream():
+        size += len(chunk)
+    return JSONResponse({"size": size})
+
+
+@app.get("/download-large")
+async def download_large(size: int = 5 * 1024 * 1024) -> StreamingResponse:
+    chunk = b"x" * 65536
+
+    async def body():
+        remaining = size
+        while remaining > 0:
+            part = chunk[: min(len(chunk), remaining)]
+            remaining -= len(part)
+            yield part
+
+    return StreamingResponse(body(), media_type="application/octet-stream")
 
 
 @app.get("/headers")

@@ -3,7 +3,7 @@ name: CI
 on:
   push:
     branches:
-      - ci/github-actions
+      - ci/**
       - master
       - dev
   pull_request:
@@ -46,6 +46,7 @@ jobs:
         run: |
           set -eu
           uv run python -m integration.run_e2e
+          uv run python -m integration.verify_http_methods
           uv run python -m integration.verify_patterns
           uv run python -m integration.verify_runtime
           uv run python -m integration.verify_dns_lookup
