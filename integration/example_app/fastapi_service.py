@@ -4,7 +4,7 @@ import os
 import logging
 
 from fastapi import FastAPI, Request, Response
-from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 
 from asgi_cc import CrankerConnector, CrankerConnectorConfig
 
@@ -71,17 +71,8 @@ async def upload_size(request: Request) -> JSONResponse:
 
 
 @app.get("/download-large")
-async def download_large(size: int = 5 * 1024 * 1024) -> StreamingResponse:
-    chunk = b"x" * 65536
-
-    async def body():
-        remaining = size
-        while remaining > 0:
-            part = chunk[: min(len(chunk), remaining)]
-            remaining -= len(part)
-            yield part
-
-    return StreamingResponse(body(), media_type="application/octet-stream")
+async def download_large(size: int = 5 * 1024 * 1024) -> Response:
+    return Response(content=b"x" * size, media_type="application/octet-stream")
 
 
 @app.get("/headers")
