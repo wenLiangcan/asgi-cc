@@ -1,0 +1,45 @@
+name: Benchmark
+
+on:
+  push:
+    branches:
+      - feat/benchmark-results-doc
+  workflow_dispatch:
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Sync dependencies
+        run: uv sync --dev
+
+      - name: Run benchmark
+        env:
+          ASGI_CC_BENCH_REQUESTS: "20"
+          ASGI_CC_BENCH_CONCURRENCY: "4"
+          ASGI_CC_BENCH_PAYLOAD_SIZE: "1024"
+          ASGI_CC_BENCH_LARGE_UPLOAD_SIZE: "5242880"
+          ASGI_CC_BENCH_LARGE_DOWNLOAD_SIZE: "5242880"
+          ASGI_CC_BENCH_SLIDING_WINDOWS: "1,2,4,8"
+        run: |
+          set -eu
+          uv run python -m integration.benchmark | tee benchmark-output.txt
+
+      - name: Upload benchmark output
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-output
+          path: benchmark-output.txt
