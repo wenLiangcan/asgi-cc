@@ -4,13 +4,30 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "asgi-cc"
-version = "0.0.1"
-description = "Experimental Cranker v3 connector scaffold for ASGI apps"
-readme = "README.md"
+version = "0.1.0"
+description = "Cranker v3 connector for ASGI applications"
+readme = "README-pypi.md"
 requires-python = ">=3.11"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Framework :: ASGI",
+    "Framework :: FastAPI",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
+]
+keywords = ["asgi", "cranker", "proxy", "fastapi", "websocket"]
 dependencies = [
     "websockets>=15.0.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/wenLiangcan/asgi-cc"
+Repository = "https://github.com/wenLiangcan/asgi-cc"
+Issues = "https://github.com/wenLiangcan/asgi-cc/issues"
 
 [dependency-groups]
 dev = [
