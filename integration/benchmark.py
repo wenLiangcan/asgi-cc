@@ -104,11 +104,12 @@ async def run_benchmark(
     requests: int,
     concurrency: int,
     verify: bool,
+    timeout_seconds: float,
 ) -> BenchmarkResult:
     semaphore = asyncio.Semaphore(concurrency)
     latencies_ms: list[float] = []
 
-    async with httpx.AsyncClient(base_url=base_url, verify=verify, timeout=30.0) as client:
+    async with httpx.AsyncClient(base_url=base_url, verify=verify, timeout=timeout_seconds) as client:
         async def worker() -> None:
             async with semaphore:
                 latencies_ms.append(await make_request(client, case))
@@ -169,6 +170,7 @@ async def benchmark_connector(
     case: BenchmarkCase,
     requests: int,
     concurrency: int,
+    timeout_seconds: float,
     start_app: Callable[[int], Awaitable[AppHandle]],
     stop_app: Callable[[AppHandle], None],
 ) -> ConnectorBenchmarkSummary:
@@ -180,6 +182,7 @@ async def benchmark_connector(
             requests=requests,
             concurrency=concurrency,
             verify=True,
+            timeout_seconds=timeout_seconds,
         )
         proxied = await run_benchmark(
             PROXY_BASE,
@@ -187,6 +190,7 @@ async def benchmark_connector(
             requests=requests,
             concurrency=concurrency,
             verify=False,
+            timeout_seconds=timeout_seconds,
         )
         return ConnectorBenchmarkSummary(
             connector_name=connector_name,
@@ -204,6 +208,7 @@ async def benchmark_python_sliding_window(
     requests: int,
     concurrency: int,
     sliding_window_size: int,
+    timeout_seconds: float,
 ) -> SlidingWindowBenchmarkSummary:
     summary = await benchmark_connector(
         connector_name=f"python-asgi-cc-window-{sliding_window_size}",
@@ -211,6 +216,7 @@ async def benchmark_python_sliding_window(
         case=case,
         requests=requests,
         concurrency=concurrency,
+        timeout_seconds=timeout_seconds,
         start_app=lambda port: start_example_app(
             port,
             extra_env={"ASGI_CC_SLIDING_WINDOW_SIZE": str(sliding_window_size)},
@@ -265,6 +271,7 @@ async def main() -> int:
     payload_size = int(os.environ.get("ASGI_CC_BENCH_PAYLOAD_SIZE", "1024"))
     large_upload_size = int(os.environ.get("ASGI_CC_BENCH_LARGE_UPLOAD_SIZE", str(5 * 1024 * 1024)))
     large_download_size = int(os.environ.get("ASGI_CC_BENCH_LARGE_DOWNLOAD_SIZE", str(5 * 1024 * 1024)))
+    timeout_seconds = float(os.environ.get("ASGI_CC_BENCH_TIMEOUT_SECONDS", "30"))
     sliding_window_sizes = parse_sliding_window_sizes()
     case_filter = parse_case_filter()
     payload = b"x" * payload_size
@@ -308,6 +315,7 @@ async def main() -> int:
                 case=case,
                 requests=requests,
                 concurrency=concurrency,
+                timeout_seconds=timeout_seconds,
                 start_app=start_example_app,
                 stop_app=stop_example_app,
             )
@@ -317,6 +325,7 @@ async def main() -> int:
                 case=case,
                 requests=requests,
                 concurrency=concurrency,
+                timeout_seconds=timeout_seconds,
                 start_app=start_java_example_app,
                 stop_app=stop_java_example_app,
             )
@@ -344,6 +353,7 @@ async def main() -> int:
                     requests=requests,
                     concurrency=concurrency,
                     sliding_window_size=sliding_window_size,
+                    timeout_seconds=timeout_seconds,
                 )
                 print_sliding_window_summary(summary)
                 sliding_window_summaries.append(summary)

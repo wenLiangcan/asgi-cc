@@ -34,10 +34,11 @@ jobs:
           ASGI_CC_BENCH_PAYLOAD_SIZE: "1024"
           ASGI_CC_BENCH_LARGE_UPLOAD_SIZE: "5242880"
           ASGI_CC_BENCH_LARGE_DOWNLOAD_SIZE: "5242880"
+          ASGI_CC_BENCH_TIMEOUT_SECONDS: "120"
           ASGI_CC_BENCH_SLIDING_WINDOWS: "1,2,4,8"
           ASGI_CC_BENCH_OUTPUT_JSON: "benchmark-output.json"
         run: |
-          set -eu
+          set -euo pipefail
           uv run python -m integration.benchmark | tee benchmark-output.txt
 
       - name: Upload benchmark output
