@@ -28,12 +28,14 @@ jobs:
 
       - name: Run benchmark
         env:
+          PYTHONUNBUFFERED: "1"
           ASGI_CC_BENCH_REQUESTS: "20"
           ASGI_CC_BENCH_CONCURRENCY: "4"
           ASGI_CC_BENCH_PAYLOAD_SIZE: "1024"
           ASGI_CC_BENCH_LARGE_UPLOAD_SIZE: "5242880"
           ASGI_CC_BENCH_LARGE_DOWNLOAD_SIZE: "5242880"
           ASGI_CC_BENCH_SLIDING_WINDOWS: "1,2,4,8"
+          ASGI_CC_BENCH_OUTPUT_JSON: "benchmark-output.json"
         run: |
           set -eu
           uv run python -m integration.benchmark | tee benchmark-output.txt
@@ -42,4 +44,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: benchmark-output
-          path: benchmark-output.txt
+          path: |
+            benchmark-output.txt
+            benchmark-output.json
