@@ -8,10 +8,12 @@ version = "0.1.0"
 description = "Cranker v3 connector for ASGI applications"
 readme = "README-pypi.md"
 requires-python = ">=3.11"
+license = "MIT"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Framework :: ASGI",
     "Framework :: FastAPI",
+    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
