@@ -4,15 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "asgi-cc"
-version = "0.1.1"
+version = "0.1.2"
 description = "Cranker v3 connector for ASGI applications"
 readme = "README-pypi.md"
 requires-python = ">=3.11"
 license = "MIT"
 classifiers = [
     "Development Status :: 3 - Alpha",
-    "Framework :: ASGI",
-    "Framework :: FastAPI",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
