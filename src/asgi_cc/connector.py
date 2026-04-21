@@ -39,9 +39,14 @@ logger = logging.getLogger("asgi_cc.connector")
 ASGIReceive = Callable[[], Awaitable[dict[str, Any]]]
 ASGISend = Callable[[dict[str, Any]], Awaitable[None]]
 ASGIApp = Any
+_MAX_DATA_CHUNK_BYTES = 16 * 1024
 
 _REQUEST_END = object()
 _REQUEST_DISCONNECT = object()
+
+
+def _iter_data_chunks(body: bytes) -> list[bytes]:
+    return [body[index : index + _MAX_DATA_CHUNK_BYTES] for index in range(0, len(body), _MAX_DATA_CHUNK_BYTES)]
 
 
 @dataclass(slots=True)
@@ -102,8 +107,15 @@ class _StreamState:
                 raise RuntimeError("response body sent before response start")
             body = bytes(message.get("body", b""))
             more_body = bool(message.get("more_body", False))
-            payload = encode_data_frame(self.request_id, body, stream_end=not more_body)
-            await self._send_with_flow_control(payload, len(body))
+            chunks = _iter_data_chunks(body) or [b""]
+            for index, chunk in enumerate(chunks):
+                is_last_chunk = index == len(chunks) - 1
+                payload = encode_data_frame(
+                    self.request_id,
+                    chunk,
+                    stream_end=is_last_chunk and not more_body,
+                )
+                await self._send_with_flow_control(payload, len(chunk))
             if not more_body:
                 self.response_complete = True
                 self.session.streams.pop(self.request_id, None)
