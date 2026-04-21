@@ -136,6 +136,7 @@ The benchmark compares:
 - requests proxied through Cranker with `asgi-cc`
 - requests proxied through Cranker with the Java connector reference setup
 - Python connector runs with multiple `sliding_window_size` values to show how connection parallelism affects performance
+- both small request/response cases and large transfer cases for upload and download
 
 Environment variables:
 
@@ -144,6 +145,8 @@ Environment variables:
 - `ASGI_CC_BENCH_REQUESTS`
 - `ASGI_CC_BENCH_CONCURRENCY`
 - `ASGI_CC_BENCH_PAYLOAD_SIZE`
+- `ASGI_CC_BENCH_LARGE_UPLOAD_SIZE`
+- `ASGI_CC_BENCH_LARGE_DOWNLOAD_SIZE`
 - `ASGI_CC_BENCH_SLIDING_WINDOWS`
 
 ## Developer Notes

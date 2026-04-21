@@ -2,6 +2,16 @@
 
 This document captures the latest local benchmark comparison between the Python `asgi-cc` connector and the Java connector, plus a sweep showing how `sliding_window_size` affects the Python connector's performance.
 
+The benchmark harness also supports large-transfer comparison cases for upload and download:
+
+1. `PUT /upload-size`
+2. `GET /download-large`
+
+Those cases are controlled with:
+
+- `ASGI_CC_BENCH_LARGE_UPLOAD_SIZE`
+- `ASGI_CC_BENCH_LARGE_DOWNLOAD_SIZE`
+
 ## Setup
 
 - Project: `asgi-cc`

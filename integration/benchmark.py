@@ -23,6 +23,7 @@ from integration.common import (
 DIRECT_BASE = "http://127.0.0.1:{port}"
 PROXY_BASE = "https://localhost:12000"
 AppHandle = TypeVar("AppHandle")
+ResponseValidator = Callable[[httpx.Response], None]
 
 
 @dataclass(slots=True)
@@ -33,6 +34,7 @@ class BenchmarkCase:
     body: bytes | None = None
     headers: dict[str, str] | None = None
     expected_status: int = 200
+    validator: ResponseValidator | None = None
 
 
 @dataclass(slots=True)
@@ -89,6 +91,8 @@ async def make_request(client: httpx.AsyncClient, case: BenchmarkCase) -> float:
     elapsed = (time.perf_counter() - started) * 1000.0
     if response.status_code != case.expected_status:
         raise RuntimeError(f"{case.name} returned {response.status_code}, expected {case.expected_status}")
+    if case.validator is not None:
+        case.validator(response)
     return elapsed
 
 
@@ -240,8 +244,11 @@ async def main() -> int:
     requests = int(os.environ.get("ASGI_CC_BENCH_REQUESTS", "300"))
     concurrency = int(os.environ.get("ASGI_CC_BENCH_CONCURRENCY", "30"))
     payload_size = int(os.environ.get("ASGI_CC_BENCH_PAYLOAD_SIZE", "1024"))
+    large_upload_size = int(os.environ.get("ASGI_CC_BENCH_LARGE_UPLOAD_SIZE", str(5 * 1024 * 1024)))
+    large_download_size = int(os.environ.get("ASGI_CC_BENCH_LARGE_DOWNLOAD_SIZE", str(5 * 1024 * 1024)))
     sliding_window_sizes = parse_sliding_window_sizes()
     payload = b"x" * payload_size
+    large_upload_payload = b"u" * large_upload_size
 
     cases = [
         BenchmarkCase(name="json-get", method="GET", path="/benchmark/ping"),
@@ -251,6 +258,20 @@ async def main() -> int:
             path="/echo",
             body=payload,
             headers={"content-type": "application/octet-stream"},
+        ),
+        BenchmarkCase(
+            name="large-upload-put",
+            method="PUT",
+            path="/upload-size",
+            body=large_upload_payload,
+            headers={"content-type": "application/octet-stream"},
+            validator=lambda response: _validate_upload_size(response, large_upload_size),
+        ),
+        BenchmarkCase(
+            name="large-download-get",
+            method="GET",
+            path=f"/download-large?size={large_download_size}",
+            validator=lambda response: _validate_download_size(response, large_download_size),
         ),
     ]
 
@@ -314,6 +335,19 @@ async def main() -> int:
         return 0
     finally:
         stop_router_container()
+
+
+def _validate_upload_size(response: httpx.Response, expected_size: int) -> None:
+    payload = response.json()
+    actual_size = int(payload.get("size", -1))
+    if actual_size != expected_size:
+        raise RuntimeError(f"upload-size returned {actual_size}, expected {expected_size}")
+
+
+def _validate_download_size(response: httpx.Response, expected_size: int) -> None:
+    actual_size = len(response.content)
+    if actual_size != expected_size:
+        raise RuntimeError(f"download-large returned {actual_size} bytes, expected {expected_size}")
 
 
 if __name__ == "__main__":
