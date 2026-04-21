@@ -117,7 +117,7 @@ When enabled, `asgi-cc` resolves the router hostnames to IP addresses, opens reg
 Run the local end-to-end verification against the Dockerized Cranker router:
 
 ```bash
-cd fastcc
+cd asgi-cc
 ./integration/run_e2e.sh
 ```
 
@@ -126,7 +126,7 @@ cd fastcc
 Run the local benchmark suite:
 
 ```bash
-cd fastcc
+cd asgi-cc
 ./integration/run_benchmark.sh
 ```
 
@@ -162,7 +162,7 @@ Environment variables:
 ### Development Checks
 
 ```bash
-cd fastcc
+cd asgi-cc
 uv run python -m compileall src/asgi_cc integration
 uv run ty check
 ```
