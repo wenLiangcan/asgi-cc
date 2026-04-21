@@ -30,6 +30,8 @@ public class RunJavaBenchApp {
         server.createContext("/hello", exchange -> writeResponse(exchange, 200, "application/json", "{\"message\":\"hello through cranker\"}".getBytes(StandardCharsets.UTF_8)));
         server.createContext("/headers", RunJavaBenchApp::handleHeaders);
         server.createContext("/echo", RunJavaBenchApp::handleEcho);
+        server.createContext("/upload-size", RunJavaBenchApp::handleUploadSize);
+        server.createContext("/download-large", RunJavaBenchApp::handleDownloadLarge);
         server.start();
 
         HttpClient client = CrankerConnectorBuilder.createHttpClient(true).build();
@@ -57,6 +59,26 @@ public class RunJavaBenchApp {
         byte[] requestBody = readFully(exchange.getRequestBody());
         String response = "{\"method\":\"" + exchange.getRequestMethod() + "\",\"path\":\"" + exchange.getRequestURI().getPath() + "\",\"body_text\":\"" + escapeJson(new String(requestBody, StandardCharsets.UTF_8)) + "\"}";
         writeResponse(exchange, 200, "application/json", response.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static void handleUploadSize(HttpExchange exchange) throws IOException {
+        byte[] requestBody = readFully(exchange.getRequestBody());
+        String response = "{\"size\":" + requestBody.length + "}";
+        writeResponse(exchange, 200, "application/json", response.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static void handleDownloadLarge(HttpExchange exchange) throws IOException {
+        int size = 5 * 1024 * 1024;
+        String query = exchange.getRequestURI().getQuery();
+        if (query != null) {
+            for (String part : query.split("&")) {
+                String[] keyValue = part.split("=", 2);
+                if (keyValue.length == 2 && keyValue[0].equals("size")) {
+                    size = Integer.parseInt(keyValue[1]);
+                }
+            }
+        }
+        writeResponse(exchange, 200, "application/octet-stream", "x".repeat(size).getBytes(StandardCharsets.UTF_8));
     }
 
     private static void handleHeaders(HttpExchange exchange) throws IOException {
