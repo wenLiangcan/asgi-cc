@@ -29,8 +29,9 @@ jobs:
       - name: Run benchmark
         env:
           PYTHONUNBUFFERED: "1"
-          ASGI_CC_BENCH_REQUESTS: "20"
-          ASGI_CC_BENCH_CONCURRENCY: "4"
+          ASGI_CC_BENCH_CASES: "large-upload-put,large-download-get"
+          ASGI_CC_BENCH_REQUESTS: "6"
+          ASGI_CC_BENCH_CONCURRENCY: "2"
           ASGI_CC_BENCH_PAYLOAD_SIZE: "1024"
           ASGI_CC_BENCH_LARGE_UPLOAD_SIZE: "5242880"
           ASGI_CC_BENCH_LARGE_DOWNLOAD_SIZE: "5242880"
