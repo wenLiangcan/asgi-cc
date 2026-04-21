@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import math
 import os
 import statistics
@@ -103,11 +104,12 @@ async def run_benchmark(
     requests: int,
     concurrency: int,
     verify: bool,
+    timeout_seconds: float,
 ) -> BenchmarkResult:
     semaphore = asyncio.Semaphore(concurrency)
     latencies_ms: list[float] = []
 
-    async with httpx.AsyncClient(base_url=base_url, verify=verify, timeout=30.0) as client:
+    async with httpx.AsyncClient(base_url=base_url, verify=verify, timeout=timeout_seconds) as client:
         async def worker() -> None:
             async with semaphore:
                 latencies_ms.append(await make_request(client, case))
@@ -168,6 +170,7 @@ async def benchmark_connector(
     case: BenchmarkCase,
     requests: int,
     concurrency: int,
+    timeout_seconds: float,
     start_app: Callable[[int], Awaitable[AppHandle]],
     stop_app: Callable[[AppHandle], None],
 ) -> ConnectorBenchmarkSummary:
@@ -179,6 +182,7 @@ async def benchmark_connector(
             requests=requests,
             concurrency=concurrency,
             verify=True,
+            timeout_seconds=timeout_seconds,
         )
         proxied = await run_benchmark(
             PROXY_BASE,
@@ -186,6 +190,7 @@ async def benchmark_connector(
             requests=requests,
             concurrency=concurrency,
             verify=False,
+            timeout_seconds=timeout_seconds,
         )
         return ConnectorBenchmarkSummary(
             connector_name=connector_name,
@@ -203,6 +208,7 @@ async def benchmark_python_sliding_window(
     requests: int,
     concurrency: int,
     sliding_window_size: int,
+    timeout_seconds: float,
 ) -> SlidingWindowBenchmarkSummary:
     summary = await benchmark_connector(
         connector_name=f"python-asgi-cc-window-{sliding_window_size}",
@@ -210,6 +216,7 @@ async def benchmark_python_sliding_window(
         case=case,
         requests=requests,
         concurrency=concurrency,
+        timeout_seconds=timeout_seconds,
         start_app=lambda port: start_example_app(
             port,
             extra_env={"ASGI_CC_SLIDING_WINDOW_SIZE": str(sliding_window_size)},
@@ -238,6 +245,24 @@ def parse_sliding_window_sizes() -> list[int]:
     return values
 
 
+def parse_case_filter() -> set[str] | None:
+    raw_value = os.environ.get("ASGI_CC_BENCH_CASES")
+    if raw_value is None:
+        return None
+    values = {item.strip() for item in raw_value.split(",") if item.strip()}
+    if not values:
+        raise ValueError("ASGI_CC_BENCH_CASES must not be empty when set")
+    return values
+
+
+def write_benchmark_json(results: list[dict[str, object]]) -> None:
+    output_path = os.environ.get("ASGI_CC_BENCH_OUTPUT_JSON")
+    if not output_path:
+        return
+    with open(output_path, "w", encoding="utf-8") as handle:
+        json.dump(results, handle, indent=2)
+
+
 async def main() -> int:
     python_app_port = int(os.environ.get("ASGI_CC_APP_PORT", "18081"))
     java_app_port = int(os.environ.get("ASGI_CC_JAVA_APP_PORT", "18082"))
@@ -246,7 +271,9 @@ async def main() -> int:
     payload_size = int(os.environ.get("ASGI_CC_BENCH_PAYLOAD_SIZE", "1024"))
     large_upload_size = int(os.environ.get("ASGI_CC_BENCH_LARGE_UPLOAD_SIZE", str(5 * 1024 * 1024)))
     large_download_size = int(os.environ.get("ASGI_CC_BENCH_LARGE_DOWNLOAD_SIZE", str(5 * 1024 * 1024)))
+    timeout_seconds = float(os.environ.get("ASGI_CC_BENCH_TIMEOUT_SECONDS", "30"))
     sliding_window_sizes = parse_sliding_window_sizes()
+    case_filter = parse_case_filter()
     payload = b"x" * payload_size
     large_upload_payload = b"u" * large_upload_size
 
@@ -274,6 +301,9 @@ async def main() -> int:
             validator=lambda response: _validate_download_size(response, large_download_size),
         ),
     ]
+    if case_filter is not None:
+        cases = [case for case in cases if case.name in case_filter]
+    benchmark_results: list[dict[str, object]] = []
 
     await start_router_container()
     try:
@@ -285,6 +315,7 @@ async def main() -> int:
                 case=case,
                 requests=requests,
                 concurrency=concurrency,
+                timeout_seconds=timeout_seconds,
                 start_app=start_example_app,
                 stop_app=stop_example_app,
             )
@@ -294,6 +325,7 @@ async def main() -> int:
                 case=case,
                 requests=requests,
                 concurrency=concurrency,
+                timeout_seconds=timeout_seconds,
                 start_app=start_java_example_app,
                 stop_app=stop_java_example_app,
             )
@@ -321,6 +353,7 @@ async def main() -> int:
                     requests=requests,
                     concurrency=concurrency,
                     sliding_window_size=sliding_window_size,
+                    timeout_seconds=timeout_seconds,
                 )
                 print_sliding_window_summary(summary)
                 sliding_window_summaries.append(summary)
@@ -332,6 +365,30 @@ async def main() -> int:
             print(f"  best_rps: {best_rps.summary.proxied.rps:.2f}")
             print(f"  lowest_overhead_window: {best_latency.sliding_window_size}")
             print(f"  lowest_overhead_ms: {best_latency.summary.mean_overhead_ms:.2f}")
+            benchmark_results.append(
+                {
+                    "case": case.name,
+                    "python": {
+                        "direct_mean_ms": statistics.fmean(python_summary.direct.latencies_ms),
+                        "proxied_mean_ms": statistics.fmean(python_summary.proxied.latencies_ms),
+                        "mean_overhead_ms": python_summary.mean_overhead_ms,
+                        "latency_ratio": python_summary.mean_ratio,
+                        "rps_ratio": python_summary.rps_ratio,
+                    },
+                    "java": {
+                        "direct_mean_ms": statistics.fmean(java_summary.direct.latencies_ms),
+                        "proxied_mean_ms": statistics.fmean(java_summary.proxied.latencies_ms),
+                        "mean_overhead_ms": java_summary.mean_overhead_ms,
+                        "latency_ratio": java_summary.mean_ratio,
+                        "rps_ratio": java_summary.rps_ratio,
+                    },
+                    "best_sliding_window": {
+                        "highest_rps_window": best_rps.sliding_window_size,
+                        "lowest_overhead_window": best_latency.sliding_window_size,
+                    },
+                }
+            )
+        write_benchmark_json(benchmark_results)
         return 0
     finally:
         stop_router_container()
