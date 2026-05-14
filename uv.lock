@@ -35,7 +35,7 @@ wheels = [
 
 [[package]]
 name = "asgi-cc"
-version = "0.1.2"
+version = "0.1.5"
 source = { editable = "." }
 dependencies = [
     { name = "websockets" },
