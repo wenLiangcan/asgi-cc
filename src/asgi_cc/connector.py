@@ -31,6 +31,7 @@ from websockets.asyncio.client import ClientConnection, connect
 
 
 logger = logging.getLogger("asgi_cc.connector")
+_DISABLED_LOGGER_ROOTS = ("asgi_cc", "websockets")
 
 ASGIReceive = Callable[[], Awaitable[dict[str, Any]]]
 ASGISend = Callable[[dict[str, Any]], Awaitable[None]]
@@ -39,6 +40,27 @@ _MAX_DATA_CHUNK_BYTES = 16 * 1024
 
 _REQUEST_END = object()
 _REQUEST_DISCONNECT = object()
+
+
+def _disable_logger_tree(root_name: str) -> None:
+    logger_names = {root_name}
+    logger_names.update(
+        name
+        for name, logger_object in logging.root.manager.loggerDict.items()
+        if isinstance(logger_object, logging.Logger)
+        and (name == root_name or name.startswith(f"{root_name}."))
+    )
+    for logger_name in logger_names:
+        logger_to_disable = logging.getLogger(logger_name)
+        logger_to_disable.disabled = True
+        logger_to_disable.propagate = False
+        logger_to_disable.setLevel(logging.CRITICAL + 1)
+
+
+def _configure_logging(config: CrankerConnectorConfig) -> None:
+    if config.disable_logging:
+        for logger_name in _DISABLED_LOGGER_ROOTS:
+            _disable_logger_tree(logger_name)
 
 
 def _iter_data_chunks(body: bytes) -> list[bytes]:
@@ -356,6 +378,7 @@ class CrankerConnector:
         if config is None:
             raise ValueError("config is required")
         self.config = config
+        _configure_logging(self.config)
         if self.config.connector_instance_id is None:
             self.config.connector_instance_id = str(uuid.uuid4())
         self._router_tasks: dict[tuple[str, int], asyncio.Task[None]] = {}

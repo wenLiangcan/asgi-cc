@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 
 import httpx
@@ -40,8 +41,31 @@ async def verify_retry_backoff() -> None:
     print(f"   retry delays: {', '.join(f'{delay:.3f}' for delay in delays)}")
 
 
+async def verify_logging_suppression() -> None:
+    print("3. Verifying logging suppression...")
+    connector_logger = logging.getLogger("asgi_cc.connector")
+    websockets_logger = logging.getLogger("websockets.client")
+    for logger in (connector_logger, websockets_logger):
+        logger.disabled = False
+        logger.propagate = True
+        logger.setLevel(logging.NOTSET)
+
+    CrankerConnector(
+        config=CrankerConnectorConfig(
+            router_urls=["wss://localhost:12001"],
+            route="*",
+            disable_logging=True,
+        )
+    )
+    assert connector_logger.disabled
+    assert websockets_logger.disabled
+    assert not connector_logger.isEnabledFor(logging.CRITICAL)
+    assert not websockets_logger.isEnabledFor(logging.CRITICAL)
+    print("   logging suppression passed")
+
+
 async def verify_graceful_deregistration() -> None:
-    print("3. Verifying graceful deregistration...")
+    print("4. Verifying graceful deregistration...")
     await start_router_container()
 
     app = FastAPI()
@@ -98,8 +122,9 @@ async def verify_graceful_deregistration() -> None:
 async def main() -> int:
     await verify_route_validation()
     await verify_retry_backoff()
+    await verify_logging_suppression()
     await verify_graceful_deregistration()
-    print("4. Connector behavior verification passed")
+    print("5. Connector behavior verification passed")
     return 0
 
 

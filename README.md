@@ -9,6 +9,7 @@ The project is designed to let existing ASGI applications participate in a Crank
 - ASGI-native request and response bridging
 - Cranker v3 (`cranker_3.0`) protocol support
 - FastAPI-compatible integration model
+- Optional suppression for `asgi-cc` and `websockets` logs
 - Runtime app attach and detach support
 
 ## Requirements
@@ -111,6 +112,18 @@ config = CrankerConnectorConfig(
 ```
 
 When enabled, `asgi-cc` resolves the router hostnames to IP addresses, opens registrations for the currently resolved routers, and periodically adds or removes router registrations as DNS changes.
+
+## Logging
+
+Set `disable_logging=True` to suppress logs emitted by `asgi-cc` and the underlying `websockets` package:
+
+```python
+config = CrankerConnectorConfig(
+    router_urls=["wss://router.example.org"],
+    route="*",
+    disable_logging=True,
+)
+```
 
 ## Integration Test
 

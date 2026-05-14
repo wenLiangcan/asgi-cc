@@ -28,6 +28,7 @@ class CrankerConnectorConfig:
     forwarded_scheme: str | None = None
     verify_ssl: bool = True
     reconnect_delay_seconds: float = 1.0
+    disable_logging: bool = False
 
     def __post_init__(self) -> None:
         if not self.route:
