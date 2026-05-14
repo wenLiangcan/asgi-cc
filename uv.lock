@@ -35,7 +35,7 @@ wheels = [
 
 [[package]]
 name = "asgi-cc"
-version = "0.0.1"
+version = "0.1.2"
 source = { editable = "." }
 dependencies = [
     { name = "websockets" },
@@ -50,7 +50,7 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "websockets", specifier = ">=15.0.0" }]
+requires-dist = [{ name = "websockets", specifier = ">=16.0.0" }]
 
 [package.metadata.requires-dev]
 dev = [

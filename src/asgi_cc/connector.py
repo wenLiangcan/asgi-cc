@@ -27,11 +27,7 @@ from .protocol import (
     split_header_text,
 )
 
-try:
-    from websockets.asyncio.client import ClientConnection, connect
-except ImportError:  # pragma: no cover
-    from websockets.client import WebSocketClientProtocol as ClientConnection  # type: ignore
-    from websockets.client import connect  # type: ignore
+from websockets.asyncio.client import ClientConnection, connect
 
 
 logger = logging.getLogger("asgi_cc.connector")
