@@ -419,7 +419,22 @@ class CrankerConnector:
         router = getattr(app, "router", app)
         lifespan_context = getattr(router, "lifespan_context", None)
         if not callable(lifespan_context):
-            logger.debug("no lifespan context found on app type: %s", type(app))
+            # Middleware receives an inner ASGI callable rather than the framework
+            # app and manages lifespan messages directly in __call__.
+            if router is not app or any(
+                callable(getattr(app, name, None))
+                for name in ("add_event_handler", "on_event")
+            ):
+                logger.warning(
+                    "Cannot register connector lifecycle for app type %s: "
+                    "the framework does not expose a callable lifespan_context. "
+                    "Use CrankerConnector as ASGI middleware or the ASGI entrypoint "
+                    "with server lifespan enabled, or explicitly await "
+                    "connector.startup() and connector.shutdown().",
+                    type(app).__name__,
+                )
+            else:
+                logger.debug("no lifespan context found on app type: %s", type(app))
             return
         if any(registered is router for registered in self._lifespan_routers):
             return

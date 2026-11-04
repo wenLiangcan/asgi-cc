@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 import unittest
 from unittest.mock import AsyncMock
 
@@ -20,6 +21,26 @@ def make_connector(app):
 
 
 class LifespanTests(unittest.TestCase):
+    def test_framework_without_lifespan_support_logs_actionable_warning(self):
+        for router in (SimpleNamespace(), SimpleNamespace(lifespan_context=None)):
+            with self.subTest(router=router):
+                with self.assertLogs("asgi_cc.connector", level="WARNING") as logs:
+                    connector = make_connector(SimpleNamespace(router=router))
+                self.assertFalse(connector._started)
+                self.assertEqual(len(logs.records), 1)
+                self.assertIn("lifespan_context", logs.output[0])
+                self.assertIn("ASGI middleware", logs.output[0])
+                self.assertIn("connector.startup()", logs.output[0])
+                self.assertIn("connector.shutdown()", logs.output[0])
+
+    def test_legacy_framework_without_router_logs_warning(self):
+        with self.assertLogs("asgi_cc.connector", level="WARNING"):
+            make_connector(SimpleNamespace(add_event_handler=lambda *args: None))
+
+    def test_supported_framework_does_not_warn(self):
+        with self.assertNoLogs("asgi_cc.connector", level="WARNING"):
+            make_connector(FastAPI())
+
     def test_default_lifespan_can_be_reused(self):
         for app_type in (FastAPI, Starlette):
             with self.subTest(app_type=app_type):
@@ -66,7 +87,7 @@ class LifespanTests(unittest.TestCase):
             CrankerConnector,
             config=CrankerConnectorConfig(router_urls=[], route="*"),
         )
-        with TestClient(app):
+        with self.assertNoLogs("asgi_cc.connector", level="WARNING"), TestClient(app):
             connector = app.middleware_stack
             while connector is not None and not isinstance(connector, CrankerConnector):
                 connector = getattr(connector, "app", None)
