@@ -22,7 +22,7 @@ The project is designed to let existing ASGI applications participate in a Crank
 
 ### Wrapper Pattern
 
-Create the connector with the application and let the app's startup and shutdown hooks manage the connector lifecycle:
+Create the connector with the application and let the app's lifespan manage the connector lifecycle:
 
 ```python
 import os
@@ -50,7 +50,7 @@ connector = CrankerConnector(
 )
 ```
 
-Keep using `app` as the ASGI server entrypoint. The connector registers itself on the app lifecycle hooks.
+Keep using `app` as the ASGI server entrypoint. The connector composes with the app's existing lifespan: it starts after application setup and shuts down before application cleanup. Custom lifespan state is preserved.
 
 ### Middleware Pattern
 

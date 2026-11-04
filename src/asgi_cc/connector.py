@@ -8,7 +8,7 @@ import ssl
 import uuid
 from dataclasses import dataclass, field
 from ipaddress import ip_address
-from typing import Any, Awaitable, Callable, cast
+from typing import Any, AsyncGenerator, Awaitable, Callable, cast
 from urllib.parse import unquote, urlparse
 
 from .config import CrankerConnectorConfig
@@ -387,6 +387,7 @@ class CrankerConnector:
         self._started = False
         self._active_request_count = 0
         self._active_request_condition = asyncio.Condition()
+        self._lifespan_routers: list[Any] = []
 
         if app is not None:
             self._register_hooks(app)
@@ -415,21 +416,27 @@ class CrankerConnector:
         self.app = None
 
     def _register_hooks(self, app: ASGIApp) -> None:
-        logger.debug("registering hooks for app type: %s", type(app))
-        add_event_handler = getattr(app, "add_event_handler", None)
-        if callable(add_event_handler):
-            logger.debug("found add_event_handler on app")
-            add_event_handler("startup", self.startup)
-            add_event_handler("shutdown", self.shutdown)
-        else:
-            router = getattr(app, "router", None)
-            on_event = getattr(router, "on_event", None)
-            if callable(on_event):
-                logger.debug("found on_event on app.router")
-                on_event("startup")(self.startup)
-                on_event("shutdown")(self.shutdown)
-            else:
-                logger.debug("no lifecycle hooks found on app")
+        router = getattr(app, "router", app)
+        lifespan_context = getattr(router, "lifespan_context", None)
+        if not callable(lifespan_context):
+            logger.debug("no lifespan context found on app type: %s", type(app))
+            return
+        if any(registered is router for registered in self._lifespan_routers):
+            return
+
+        @contextlib.asynccontextmanager
+        async def connector_lifespan(lifespan_app: ASGIApp) -> AsyncGenerator[Any, None]:
+            async with lifespan_context(lifespan_app) as state:
+                # shutdown detaches the app; restore it when the lifespan is reused.
+                self.app = app
+                try:
+                    await self.startup()
+                    yield state
+                finally:
+                    await self.shutdown()
+
+        router.lifespan_context = connector_lifespan
+        self._lifespan_routers.append(router)
 
     async def startup(self) -> None:
         if self._started:
@@ -549,7 +556,7 @@ class CrankerConnector:
                 proto=0,
             )
             for _, _, _, _, sockaddr in address_info:
-                host = sockaddr[0]
+                host = str(sockaddr[0])
                 resolved.append(self._replace_host_with_ip(parsed, host))
         return list(dict.fromkeys(resolved))
 

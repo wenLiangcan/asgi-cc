@@ -20,7 +20,7 @@ classifiers = [
 ]
 keywords = ["asgi", "cranker", "proxy", "fastapi", "websocket"]
 dependencies = [
-    "websockets>=16.0.0",
+    "websockets>=17.4",
 ]
 
 [project.urls]
@@ -30,10 +30,11 @@ Issues = "https://github.com/wenLiangcan/asgi-cc/issues"
 
 [dependency-groups]
 dev = [
-    "fastapi>=0.115.0",
-    "httpx>=0.28.0",
-    "ty>=0.0.31",
-    "uvicorn>=0.34.0",
+    "fastapi>=0.162.0",
+    "httpx>=0.28.1",
+    "httpx2>=2.16.0",
+    "ty>=0.0.96",
+    "uvicorn>=0.54.0",
 ]
 
 [tool.setuptools]

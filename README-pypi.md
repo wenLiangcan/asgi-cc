@@ -51,7 +51,7 @@ connector = CrankerConnector(
 )
 ```
 
-Keep using `app` as the ASGI server entrypoint. The connector registers itself on the app startup and shutdown hooks.
+Keep using `app` as the ASGI server entrypoint. The connector composes with the app's existing lifespan: it starts after application setup and shuts down before application cleanup. Custom lifespan state is preserved.
 
 ## Middleware Usage
 

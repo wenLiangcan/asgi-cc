@@ -18,5 +18,5 @@ config = CrankerConnectorConfig(
     component_name="wrapper-pattern",
 )
 
-# The connector attaches to the app lifecycle hooks.
+# The connector composes with the app lifespan.
 connector = CrankerConnector(app, config=config)
