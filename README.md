@@ -1,5 +1,9 @@
 # asgi-cc
 
+[![PyPI](https://img.shields.io/pypi/v/asgi-cc)](https://pypi.org/project/asgi-cc/)
+[![PyPI - Downloads](https://img.shields.io/pypi/dm/asgi-cc)](https://pypi.org/project/asgi-cc/)
+[![Downloads](https://static.pepy.tech/badge/asgi-cc)](https://pepy.tech/projects/asgi-cc)
+
 `asgi-cc` is a Python Cranker connector for ASGI applications. It connects an ASGI app to a Cranker router over WebSocket and forwards HTTP traffic through the Cranker v3 protocol without introducing a loopback HTTP hop inside the service process.
 
 The project is designed to let existing ASGI applications participate in a Cranker deployment with minimal integration work. The current implementation targets the latest protocol generation only: `cranker_3.0`.
